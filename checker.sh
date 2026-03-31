@@ -1,4 +1,5 @@
 #!/bin/bash
+VERSION="1.0.0"
 
 BAD="^(1\.14\.1|0\.30\.4)$"
 AFTER="2026-03-29"
@@ -32,7 +33,7 @@ checked=0
 hits=0
 system_compromised=0
 
-echo "=== Axios Compromise Checker ==="
+echo "=== Axios Compromise Checker v$VERSION ==="
 echo "Scanning projects changed after $AFTER..."
 echo ""
 
@@ -120,10 +121,11 @@ while IFS= read -r -d '' f; do
     fi
   fi
 
-  # installed check
-  if [ -d "$d/node_modules" ]; then
-    if (cd "$d" && npm ls axios 2>/dev/null | grep -E 'axios@(1\.14\.1|0\.30\.4)\b' >/dev/null); then
-      echo "  ⚠️  INSTALLED HIT: compromised axios in node_modules"
+  # installed check (via package.json in node_modules, avoids slow npm ls)
+  if [ -f "$d/node_modules/axios/package.json" ]; then
+    v=$(jq -r '.version // empty' "$d/node_modules/axios/package.json" 2>/dev/null)
+    if [[ $v =~ $BAD ]]; then
+      echo "  ⚠️  INSTALLED HIT: axios@$v in node_modules"
       found=1
     fi
   fi

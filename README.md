@@ -11,7 +11,7 @@ More info: https://www.stepsecurity.io/blog/axios-compromised-on-npm-malicious-v
 Run from the root of your projects folder (e.g. `~/projects`):
 
 ```bash
-cd ~/projects && curl -sL https://raw.githubusercontent.com/makeabledk/axios-checker/main/checker.sh | bash
+cd ~/projects && curl -sL "https://raw.githubusercontent.com/makeabledk/axios-checker/main/checker.sh?v=1.0.0" | bash
 ```
 
 ## What it checks
