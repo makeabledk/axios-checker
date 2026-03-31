@@ -1,26 +1,93 @@
 #!/bin/bash
 
 BAD="^(1\.14\.1|0\.30\.4)$"
+AFTER="2026-03-29"
+C2_DOMAIN="sfrclak.com"
+C2_IP="142.11.206.73"
 
 checked=0
 hits=0
+system_compromised=0
 
-echo "Scanning projects changed in last 48h..."
+echo "=== Axios Compromise Checker ==="
+echo "Scanning projects changed after $AFTER..."
 echo ""
+
+# --- System-level checks (run once) ---
+
+echo "[System checks]"
+
+# Persistence file check
+case "$(uname)" in
+  Darwin)
+    if [ -f "/Library/Caches/com.apple.act.mond" ]; then
+      echo "  ⚠️  PERSISTENCE FILE FOUND: /Library/Caches/com.apple.act.mond"
+      system_compromised=1
+    fi
+    ;;
+  Linux)
+    if [ -f "/tmp/ld.py" ]; then
+      echo "  ⚠️  PERSISTENCE FILE FOUND: /tmp/ld.py"
+      system_compromised=1
+    fi
+    ;;
+esac
+
+# C2 domain check via DNS
+if command -v dig &>/dev/null; then
+  if dig +short "$C2_DOMAIN" 2>/dev/null | grep -q .; then
+    echo "  ⚠️  C2 DOMAIN RESOLVES: $C2_DOMAIN"
+    system_compromised=1
+  fi
+elif command -v nslookup &>/dev/null; then
+  if nslookup "$C2_DOMAIN" 2>/dev/null | grep -q "Address"; then
+    echo "  ⚠️  C2 DOMAIN RESOLVES: $C2_DOMAIN"
+    system_compromised=1
+  fi
+fi
+
+# Check /etc/hosts for C2 (if already blocked, that's good)
+if [ -f /etc/hosts ] && grep -q "$C2_DOMAIN" /etc/hosts; then
+  echo "  ✓  C2 domain already blocked in /etc/hosts"
+fi
+
+if [ $system_compromised -eq 0 ]; then
+  echo "  ✓  No system-level indicators found"
+fi
+
+echo ""
+echo "[Project checks]"
+
+# --- Project-level checks ---
 
 while IFS= read -r -d '' f; do
   d=$(dirname "$f")
+
+  # Deduplicate: skip if we already checked this directory
+  if [ "$d" = "$prev_d" ]; then
+    continue
+  fi
+  prev_d="$d"
+
   checked=$((checked+1))
 
   echo "Checking: $d"
 
   found=0
 
-  # lockfile check
+  # lockfile check (package-lock.json)
   if [ -f "$d/package-lock.json" ]; then
     v=$(jq -r '.packages["node_modules/axios"].version // .dependencies.axios.version // empty' "$d/package-lock.json" 2>/dev/null)
     if [[ $v =~ $BAD ]]; then
-      echo "  LOCKFILE HIT: axios@$v"
+      echo "  ⚠️  LOCKFILE HIT: axios@$v (package-lock.json)"
+      found=1
+    fi
+  fi
+
+  # lockfile check (yarn.lock)
+  if [ -f "$d/yarn.lock" ]; then
+    if grep -qE 'axios@.*:' "$d/yarn.lock" && grep -qE '^\s+version "(1\.14\.1|0\.30\.4)"' "$d/yarn.lock"; then
+      echo "  ⚠️  LOCKFILE HIT: compromised axios in yarn.lock"
       found=1
     fi
   fi
@@ -28,14 +95,14 @@ while IFS= read -r -d '' f; do
   # installed check
   if [ -d "$d/node_modules" ]; then
     if (cd "$d" && npm ls axios 2>/dev/null | grep -E 'axios@(1\.14\.1|0\.30\.4)\b' >/dev/null); then
-      echo "  INSTALLED HIT"
+      echo "  ⚠️  INSTALLED HIT: compromised axios in node_modules"
       found=1
     fi
   fi
 
-  # malware check
+  # malware package check
   if [ -d "$d/node_modules/plain-crypto-js" ]; then
-    echo "  MALWARE FOUND"
+    echo "  🚨 MALWARE FOUND: plain-crypto-js is present"
     found=1
   fi
 
@@ -43,15 +110,26 @@ while IFS= read -r -d '' f; do
     hits=$((hits+1))
   fi
 
-done < <(find . -type f -mtime -2 \( -name package.json -o -name package-lock.json \) -not -path "*/node_modules/*" -print0)
+done < <(find . -type f -newermt "$AFTER" \( -name package.json -o -name package-lock.json -o -name yarn.lock \) -not -path "*/node_modules/*" -print0 | sort -z)
 
 echo ""
 echo "===== REPORT ====="
 echo "Projects checked: $checked"
 echo "Projects with hits: $hits"
+echo ""
 
-if [ "$hits" -eq 0 ]; then
-  echo "Status: CLEAN"
+if [ $system_compromised -eq 1 ] || [ "$hits" -gt 0 ]; then
+  echo "Status: ⚠️  ATTENTION NEEDED"
+  echo ""
+  echo "If malware was found or persistence files exist:"
+  echo "  1. Treat this machine as COMPROMISED"
+  echo "  2. Rotate ALL credentials (npm tokens, AWS keys, SSH keys, CI/CD secrets)"
+  echo "  3. Remove plain-crypto-js: rm -rf node_modules/plain-crypto-js"
+  echo "  4. Downgrade axios: npm install axios@1.14.0"
+  echo "  5. Block C2: sudo sh -c 'echo \"0.0.0.0 sfrclak.com\" >> /etc/hosts'"
+  echo "  6. Consider rebuilding machine from known-good state"
+  echo ""
+  echo "More info: https://www.stepsecurity.io/blog/axios-compromised-on-npm-malicious-versions-drop-remote-access-trojan"
 else
-  echo "Status: ATTENTION NEEDED"
+  echo "Status: ✅ CLEAN"
 fi
