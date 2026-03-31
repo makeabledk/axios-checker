@@ -5,6 +5,29 @@ AFTER="2026-03-29"
 C2_DOMAIN="sfrclak.com"
 C2_IP="142.11.206.73"
 
+# Check requirements
+missing=0
+
+if ! command -v jq &>/dev/null; then
+  echo "Missing: jq"
+  echo "  macOS:  brew install jq"
+  echo "  Linux:  sudo apt install jq"
+  echo ""
+  missing=1
+fi
+
+if ! command -v npm &>/dev/null; then
+  echo "Missing: npm"
+  echo "  Install Node.js from https://nodejs.org"
+  echo ""
+  missing=1
+fi
+
+if [ $missing -eq 1 ]; then
+  echo "Install the above and try again."
+  exit 1
+fi
+
 checked=0
 hits=0
 system_compromised=0
