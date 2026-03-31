@@ -1,5 +1,5 @@
 #!/bin/bash
-VERSION="1.0.0"
+VERSION="1.1.0"
 
 BAD="^(1\.14\.1|0\.30\.4)$"
 AFTER="2026-03-29"
@@ -140,7 +140,7 @@ while IFS= read -r -d '' f; do
     hits=$((hits+1))
   fi
 
-done < <(find . -type f -newermt "$AFTER" \( -name package.json -o -name package-lock.json -o -name yarn.lock \) -not -path "*/node_modules/*" -print0 | sort -z)
+done < <(find . -type d \( -name node_modules -o -name .git -o -name .cache -o -name dist -o -name build -o -name .next -o -name .venv \) -prune -o -type f -newermt "$AFTER" \( -name package.json -o -name package-lock.json -o -name yarn.lock \) -print0 | sort -z)
 
 echo ""
 echo "===== REPORT ====="
