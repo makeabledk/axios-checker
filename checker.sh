@@ -56,15 +56,20 @@ case "$(uname)" in
     ;;
 esac
 
-# C2 domain check via DNS
-if command -v dig &>/dev/null; then
-  if dig +short "$C2_DOMAIN" 2>/dev/null | grep -q .; then
-    echo "  ⚠️  C2 DOMAIN RESOLVES: $C2_DOMAIN"
+# Check for active connections to C2
+if command -v lsof &>/dev/null; then
+  if lsof -i -n 2>/dev/null | grep -qE "$C2_IP|8000" && lsof -i -n 2>/dev/null | grep -q "$C2_IP"; then
+    echo "  ⚠️  ACTIVE CONNECTION TO C2: $C2_IP ($C2_DOMAIN)"
     system_compromised=1
   fi
-elif command -v nslookup &>/dev/null; then
-  if nslookup "$C2_DOMAIN" 2>/dev/null | grep -q "Address"; then
-    echo "  ⚠️  C2 DOMAIN RESOLVES: $C2_DOMAIN"
+elif command -v ss &>/dev/null; then
+  if ss -tn 2>/dev/null | grep -q "$C2_IP"; then
+    echo "  ⚠️  ACTIVE CONNECTION TO C2: $C2_IP ($C2_DOMAIN)"
+    system_compromised=1
+  fi
+elif command -v netstat &>/dev/null; then
+  if netstat -an 2>/dev/null | grep -q "$C2_IP"; then
+    echo "  ⚠️  ACTIVE CONNECTION TO C2: $C2_IP ($C2_DOMAIN)"
     system_compromised=1
   fi
 fi
